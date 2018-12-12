@@ -1,0 +1,48 @@
+# make_webview.cna
+# Export beacon metadata to other formats for use in other stuff
+
+command make_webview {
+    getCSV();
+}
+
+sub csv_to_json {
+    # open file and overwrite (>> to append)
+    $fileHandle = openf(">beacons.csv");
+    println($fileHandle, $1);
+    closef($fileHandle);
+
+    @parser_command = @('python3','beacons_to_json.py');
+	$output = readAll(exec(@parser_command));
+    println($output);
+
+}
+
+sub getCSV {
+    $csv = "id,pid,pbid,user,os,ver,host,computer,charset,internal,external,port,session,last,lastf,is64,barch,alive,note\n";
+    foreach $b (beacons()) {
+        $string = $b['id'] . "," . 
+                  $b['pid'] . "," . 
+                  $b['pbid'] . "," . 
+                  $b['user'] . "," . 
+                  $b['os'] . "," . 
+                  $b['ver'] . "," . 
+                  $b['host'] . "," . 
+                  $b['computer'] . "," . 
+                  $b['charset'] . "," . 
+                  $b['internal'] . "," . 
+                  $b['external'] . "," . 
+                  $b['port'] . "," . 
+                  $b['session'] . "," . 
+                  $b['last'] . "," . 
+                  $b['lastf'] . "," . 
+                  $b['is64'] . "," . 
+                  $b['barch'] . "," . 
+                  $b['alive'] . "," . 
+                  $b['note'] . 
+                  "\n";
+        $csv .= $string;
+    }
+    #println($csv);
+    csv_to_json($csv);
+}
+

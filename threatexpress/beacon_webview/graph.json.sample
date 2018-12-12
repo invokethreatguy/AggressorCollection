@@ -1,0 +1,82 @@
+{
+  "links": [
+    {
+      "type": "HTTP",
+      "source": "99058",
+      "target": "0"
+    },
+    {
+      "type": "SMB",
+      "source": "52497",
+      "target": "99058"
+    }
+  ],
+  "nodes": [
+    {
+      "charset": "windows-1252",
+      "port": "",
+      "os": "Windows",
+      "pbid": "",
+      "barch": "x86",
+      "host": "172.22.157.225",
+      "pid": "4900",
+      "external": "172.16.214.128",
+      "nodeIcon": "",
+      "lastf": "2s",
+      "session": "beacon",
+      "id": "99058",
+      "alive": "true",
+      "user": "admin",
+      "internal": "172.22.157.225",
+      "note": "NEW; x86; sleep 60 20",
+      "ver": "6.2",
+      "computer": "WIN10",
+      "last": "2164",
+      "is64": "1"
+    },
+    {
+      "charset": "windows-1252",
+      "port": "",
+      "os": "Windows",
+      "pbid": "99058",
+      "barch": "x64",
+      "host": "172.22.157.225",
+      "pid": "2808",
+      "external": "172.22.157.225 ⚯⚯",
+      "nodeIcon": "",
+      "lastf": "7m",
+      "session": "beacon",
+      "id": "52497",
+      "alive": "true",
+      "user": "admin",
+      "internal": "172.22.157.225",
+      "note": "NEW; x64; SMB parent 4900",
+      "ver": "10.0",
+      "computer": "WIN10",
+      "last": "479420",
+      "is64": "1"
+    },
+    {
+      "charset": "",
+      "port": "",
+      "os": "Cobalt Strike",
+      "pbid": "",
+      "barch": "",
+      "host": "teamserver",
+      "pid": "teamserver",
+      "external": "",
+      "nodeIcon": "",
+      "lastf": "",
+      "session": "",
+      "id": "0",
+      "alive": "",
+      "user": "teamserver",
+      "internal": "",
+      "note": "",
+      "ver": "",
+      "computer": "",
+      "last": "",
+      "is64": ""
+    }
+  ]
+}

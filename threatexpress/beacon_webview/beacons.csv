@@ -1,0 +1,3 @@
+id,pid,pbid,user,os,ver,host,computer,charset,internal,external,port,session,last,lastf,is64,barch,alive,note
+26239,8284,27265,admin,Windows,10.0,172.30.149.81,WIN10,windows-1252,172.30.149.81,172.30.149.81 ⚯⚯,,beacon,848227,14m,1,x86,true,NEW; x86; SMB parent 8284
+27265,4272,,admin,Windows,10.0,172.30.149.81,WIN10,windows-1252,172.30.149.81,172.16.214.128,,beacon,503,503ms,1,x86,true,NEW; x86; sleep 60 20

