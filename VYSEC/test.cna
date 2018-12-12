@@ -1,0 +1,21 @@
+sub callback {
+	println("Dialog was actioned. Button: $2 Values: $3");
+}
+
+alias host{
+
+$dialog = dialog("Host File", %(uri => "/raw.sct", port => 80, mimetype => "text/scriptlet"), &callback);
+dialog_description($dialog, "Host a file through Cobalt Strike's web server");
+	
+drow_file($dialog, "file", "File:");
+drow_text($dialog, "uri",  "Local URI:");
+drow_text($dialog, "host", "Local Host:", 20);
+drow_text($dialog, "port", "Local Port:");
+drow_combobox($dialog, "mimetype", "Mime Type:", @("automatic", "application/octet-stream", "text/html", "text/plain"));
+
+dbutton_action($dialog, "Launch");
+dbutton_help($dialog, "https://www.cobaltstrike.com/help-host-file");
+
+dialog_show($dialog);
+
+}
