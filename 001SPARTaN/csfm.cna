@@ -1,0 +1,245 @@
+# csfm.cna
+# Your friendly red team operator's guide to the galaxy
+# 
+# 001SPARTaN and r3dQu1nn
+
+include(script_resource("defs.cna")); # File with a database of all our built in definitions
+include(script_resource("defs.bin")); # Binary file containing any definitions you create
+
+global('@database @results @customs');
+
+@customs = @(); # Any custom definitions
+
+sub search {
+    local('$index $arg %entry @tags @lctags');
+
+    clear(@results); # Make sure no leftovers from a previous search
+
+    $arg = $1;
+    println("Searching for $arg");
+    $index = 1;
+
+    # Iterate through all entries in the database
+    foreach %entry (@database) {
+        @tags = %entry["tags"];
+
+        # Super stupid way of doing this, but we want all our tags to be lowercase to allow proper matching
+        foreach $tag (@tags) {
+            add(@lctags, lc($tag), -1);
+        }
+
+        # If search term is empty or *, return all entries
+        if (($1 eq $null) || ($1 eq '*')) {
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++;
+        }
+        # Otherwise lowercase search term and search for it in tags
+        else if (lc($arg) in @lctags) {
+            println("Found result: " . %entry);
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++;
+        }
+        # Also do partial command match
+        else if (lc(%entry["cmd"]) ismatch ('.*?' . lc($arg) . '.*?')) {
+            println("Found result (cmd match): " . %entry);
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++; 
+        }
+
+        clear(@lctags);
+    }
+}
+
+# Same search function as before, but only looks for tips
+sub tip {
+    local('$index $arg %entry @tags @lctags');
+
+    clear(@results);
+
+    $arg = $1;
+    println("Searching for $arg");
+    $index = 1;
+
+    foreach %entry (@tips) {
+        @tags = %entry["tags"];
+
+        # Super stupid way of doing this, but we want all our tags to be lowercase to allow proper matching
+        foreach $tag (@tags) {
+            add(@lctags, lc($tag), -1);
+        }
+
+        if (($1 eq $null) || ($1 eq '*')) {
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++;
+        }
+        else if (lc($arg) in @lctags) {
+            println("Found result: " . %entry);
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++;
+        }
+        else if (lc(%entry["tips"]) ismatch ('.*?' . lc($arg) . '.*?')) {
+            println("Found result (cmd match): " . %entry);
+            %entry["index"] = $index;
+            add(@results, %entry, -1);
+            $index++; 
+        }
+
+        clear(@lctags);
+    }
+}
+
+# Reload definitions from defs.cna and defs.bin
+sub reload_defs {
+    local('%entry $handle');
+    @database = get_database();
+
+    # defs.bin contains an array of custom definitions stored as a serialized object
+    # Maybe not safe, but a malicious defs.bin is not our threat model here
+    $handle = openf("defs.bin");
+    @customs = readObject($handle);
+    closef($handle);
+
+    if (size(@customs) > 0) {
+        foreach %entry (@customs) {
+            add(@database, %entry, -1);
+        }
+    }
+    else {
+        @customs = @();
+    }
+}
+
+# Add a custom definition to defs.bin
+sub add_def {
+    local('%entry $handle');
+    %entry["cmd"] = $3["cmd"];
+    %entry["desc"] = $3["desc"];
+    %entry["tags"] = split(',', $3["tags"]);
+    
+    println("Adding " . %entry);
+
+    $handle = openf(">defs.bin"); # open handle to defs.bin
+    add(@customs, %entry, -1); # add entry to @customs array
+    writeObject($handle, @customs); # write @customs array to defs.bin handle
+    closef($handle); # close handle
+
+    reload_defs();
+}
+
+beacon_command_register("csfm", "The Red Team Operator's Guide to the Galaxy",
+    "\nSyntax: csfm [List]\n" .
+    "List all the options to use csfm\n" .
+    "\nQueries a database for well known commands, or diplays great tips or tricks for a Red Team Operator.\n" .
+    "Your friendly Red Team Operator Guide to the Galaxy by 001SPARTaN and r3dQu1nn!\n" .
+    "\nExample: search computer, tip ntlm\n"
+
+);
+
+alias csfm {
+    $arg = lc($2);
+
+    if ($arg ismatch 'list') {
+        local('$out');
+        $out = "csfm Command Options\n";
+        $out .= "    \c0===============\n\n";
+        $out .= "    Option                   Description\n";
+        $out .= "\c0    ------                   -----------\n";
+        blog($1, $out);
+        blog2($1, "\cBsearch [option]          Search the database for common commands, and tips");
+        blog2($1, "\cBtip [option]             Display Red Team Tips");
+        blog2($1, "\cBruncmd [number]          Run a command number returned by search");
+        blog2($1, "\cBadd [Enter]              Dialog menu to add a command to the database");
+    }
+
+    if ($2 ismatch 'smile') {
+        local('$smile');
+        $smile = "\n";
+        $smile .= "\t\c9░░░░░░░░░░░███████░░░░░░░░░░░\n";
+        $smile .= "\t\c9░░░░░░░████░░░░░░░████░░░░░░░\n";
+        $smile .= "\t\c9░░░░░██░░░░░░░░░░░░░░░██░░░░░\n";
+        $smile .= "\t\c9░░░██░░░░░░░░░░░░░░░░░░░██░░░\n";
+        $smile .= "\t\c9░░█░░░░░░░░░░░░░░░░░░░░░░░█░░\n";
+        $smile .= "\t\c9░█░░████░░░░░░░░██████░░░░░█░\n";
+        $smile .= "\t\c9█░░█░░░██░░░░░░█░░░░███░░░░░█\n";
+        $smile .= "\t\c9█░█░░░░░░█░░░░░█░░░░░░░█░░░░█\n";
+        $smile .= "\t\c9█░█████████░░░░█████████░░░░█\n";
+        $smile .= "\t\c9█░░░░░░░░░░░░░░░░░░░░░░░░░░░█\n";
+        $smile .= "\t\c9█░░░░░░░░░░░░░░░░░░░░░░░░░░░█\n";
+        $smile .= "\t\c9█░░░████████████████████░░░░█\n";
+        $smile .= "\t\c9░█░░░█▓▓▓▓▓▓▓▓█████▓▓▓█░░░░█░\n";
+        $smile .= "\t\c9░█░░░░█▓▓▓▓▓██░░░░██▓██░░░░█░\n";
+        $smile .= "\t\c9░░█░░░░██▓▓█░░░░░░░▒██░░░░█░░\n";
+        $smile .= "\t\c9░░░██░░░░██░░░░░░▒██░░░░██░░░\n";
+        $smile .= "\t\c9░░░░░██░░░░███████░░░░██░░░░░\n";
+        $smile .= "\t\c9░░░░░░░███░░░░░░░░░███░░░░░░░\n";
+        $smile .= "\t\c9░░░░░░░░░░█████████░░░░░░░░░░\n";
+        blog($1, $smile);
+    }
+
+    if ($2 is $null) {
+        berror($1, "\c4Need to specify additional syntax! Use the 'list' command for help");
+        blog($1, "\cBSyntax Example: csfm list");
+    }
+}
+
+alias search {
+    local('%entry $index $cmd $desc');
+    # TODO: Allow search to narrow results by specifying multiple tags (space separated)
+    # if multiple args, pass array to search
+    # if search has multiple args, make sure to match each arg, not just first
+    search($2);
+    $size = size(@results);
+    blog($1, "Found $size results:");
+    foreach %entry (@results) {
+        $index = %entry["index"];
+        $cmd = %entry["cmd"];
+        $desc = %entry["desc"];
+        blog($1, "$index - $cmd\t$desc");
+    }
+}
+
+alias tip {
+    local ('%entry $index $tip $desc');
+    tip($2);
+    $size = size(@results);
+    blog($1, "Found $size results:");
+    foreach %entry (@results) {
+        $index = %entry["index"];
+        $tip = %entry["tips"];
+        blog($1, "$index - $tip");
+    }
+}
+
+alias runcmd {
+    local('%entry $index $bid');
+    $index = $2;
+    $bid = $1;
+    println($bid);
+    
+    foreach %entry (@results) {
+        if (%entry["index"] eq $index) {
+            if ("powershell" in %entry["tags"]) {
+                prompt_text("Run command:", %entry["cmd"], lambda ({ bpowershell($bid, $1 . $+); }, $bid => $bid));
+            }
+            else {
+                prompt_text("Run command:", %entry["cmd"], lambda ({ bshell($bid, $1 . $+); }, $bid => $bid));
+            }
+        }
+    }
+}
+
+alias add {
+    $dialog = dialog("Add entry", %(cmd => "Command here", desc => "Description here", tags => "Tags here (comma separated)"), &add_def);
+    drow_text($dialog, "cmd", "Command: ");
+    drow_text($dialog, "desc", "Description: ");
+    drow_text($dialog, "tags", "Tags: ");
+    dbutton_action($dialog, "Add");
+    dialog_show($dialog);
+}
+
+reload_defs();
