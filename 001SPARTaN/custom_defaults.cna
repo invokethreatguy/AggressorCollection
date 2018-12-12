@@ -1,0 +1,47 @@
+# Some of my defaults for Cobalt Strike.
+# 001SPARTaN
+
+# Keyboard shortcuts
+# Next tab and previous tab
+bind Meta+Right {
+    nextTab();
+}
+
+bind Meta+Left {
+    previousTab();
+}
+
+bind Ctrl+Tab {
+    nextTab();
+}
+
+bind Shift+Ctrl+Tab {
+    previousTab();
+}
+
+# Open the Script Console
+bind Shift+Ctrl+S {
+    openScriptConsole();
+}
+
+# Open the connect dialog
+bind Ctrl+N {
+    openConnectDialog();
+}
+
+# Load scripts
+include(script_resource("powershell.cna"));
+include(script_resource("ElevateKit/elevate.cna"));
+
+# Change default event log
+set EVENT_SBAR_RIGHT {
+    # Add number of beacons to event log status bar
+    $beacons = size(beacons());
+    return "[\c9Beacons: $beacons\o | lag: $1 $+ ]";
+}
+
+# on beacon_initial {
+#     if (-isadmin $1) {
+#         exec("say -v Fiona 'New admin beacon!'");
+#     }
+#}

