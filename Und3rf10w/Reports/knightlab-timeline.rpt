@@ -1,0 +1,91 @@
+# This is an extremely ghetto way to create a report that is properly formatted for usage in Knight lab's Timeline (https://timeline.knightlab.com/) utility. It needs a lot of work.
+# 	When you go to make the report, it doesn't matter where or what you save it as, it will just make an empty report and the actual csv will be in writetome.csv
+#	This would probably be better as a standard aggressor script, and not as a report script.
+# 	Look at the block of else if statements if you want to modify what is included in the output. Note that to my knowledge, there is no way to obfuscate credentials in this report.
+# 	- Und3rf10w
+
+report "Knightlab Timeline CSV" {
+	landscape();
+	page "first"{
+		br();
+	}
+ 
+	page "rest"{
+		$handle = openf(">writetome.csv");
+		println($handle, "Year,Month,Day,Time,End Year,End Month,End Day,End Time,Display Date,Headline,Text,Media,Media Credit,Media Caption,Media Thumbnail,Type,Group,Background");
+		println($handle, ",,,,,,,,,Session Timeline,This timeline describes the activity performed by our Red Team Operators for this campaign,,,,,title,,");
+		filter(lambda({
+					local('$bid $session %temp');
+					$bid = $1['bid'];
+ 
+					if ($bid ne "" && $bid in %sessions) {
+						$session = %sessions[$bid];
+					}
+ 
+ 
+					# Create new row
+					%temp = %();
+					%temp['Year'] = formatDate($1['when'], 'yyyy');
+					%temp['Month'] = formatDate($1['when'], 'M');
+					%temp['Day'] = formatDate($1['when'], 'd');
+					%temp['Time'] = formatDate($1['when'], 'H:m:s');
+					#./%temp['Time'] = ",";
+					%temp['End Year'] = formatDate($1['when'], 'yyyy');
+					%temp['End Month'] = formatDate($1['when'], 'M');
+					%temp['End Day'] = formatDate($1['when'], 'd');
+					%temp['End Time'] = formatDate($1['when'], 'H:m:s');
+					# %temp['End Time'] = ",";
+					# %temp['Display Date'] = formatTime($1['when']);
+ 
+					if ($1['type'] eq "sendmail_start") {
+						%temp['Headline'] = "Start of phishing campaign: " . $1['subject'];
+					}
+					else if ($1['type'] eq "sendmail_post") {
+						%temp['Headline'] = "Email sent to " . agTokenToEmail($aggr, $1['token']) . ": " . $1['status'];
+					}
+					else if ($1['type'] eq "webhit"){
+						if ('token' in $1) {
+							%temp['Headline'] = "Hit by: " . agTokenToEmail($aggr, $1['token']);
+						}
+						else {
+							%temp['Headline'] = "Web server visit";
+							%temp['Text'] = "Visit to " . $1['data'];
+ 
+						}
+					}
+					else if ($1['type'] eq "notify"){
+						continue;
+					}
+					else if ($1['type'] eq "beacon_initial"){
+						if ($session['pbid'] ne ''){
+							%temp['Headline'] = "Pivot to: " . $session['computer'] . " From: " .  %sessions[$session['pbid']]['computer'];	
+						}
+						else {
+							%temp['Headline'] = "New Session on host: " . $session['computer'];
+						}
+						%temp['Text'] = "[*] User: " . $session['user'] . " [*] IP: " . $session['internal'];
+					}
+					else if ($1['type'] eq "checkin"){
+						continue;
+					}
+					else if ($1['type'] eq "input"){
+						%temp['Headline'] = "Action performed on: " . $session['computer'];
+						%temp['Text'] = $1['data'];
+					}
+					else if ($1['type'] eq "task"){
+						%temp['Headline'] = "Action performed on: " . $session['computer'];
+						%temp['Text'] = $1['data'];
+					}
+					else if ($1['type'] eq "output"){
+						continue;
+					}
+					else {
+						continue;
+					}
+					println($handle, %temp['Year'] . "," . %temp['Month'] . "," . %temp['Day'] . "," . %temp['Time'] .",". %temp['End Year'] . "," . %temp['End Month'] . "," . %temp['End Day'] . "," . %temp['End Time'] . "," . %temp['Headline'] . "," . %temp['Text'] . ",,,,,,");
+		}, %sessions => agSessionsById($3), $aggr => $3), agArchives($3));
+	}
+	println("Report Generated");
+	closef($handle);
+}
+ 

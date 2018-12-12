@@ -1,0 +1,55 @@
+# This script adds basic pushover functionality to Cobalt Strike
+# Ensure that you configure the pushover users in pushover-cs, ensure it is executeable
+# @Und3rf10w
+
+on ready {
+    elog("Pushover notifications are now configured");
+}
+
+on event_notify {
+    $push = exec("/usr/bin/pushover-cs CS:System_Event $2 $+ : $1");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on event_join {
+    $push = exec("/usr/bin/pushover-cs CS:User_Joined $2 $+ : $1 has joined");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on event_newsite {
+    $push = exec("/usr/bin/pushover-cs CS:New_Site_Added $3 $+ : $1 $+ : $2 ");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on event_action {
+    $push = exec("/usr/bin/pushover-cs CS:Action_Performed $2 $+ : < $+ $3 $+ >: $1 ");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on event_public {
+    $push = exec("/usr/bin/pushover-cs CS:New_Message $3 $+ : < $+ $1 $+ >: $2 ");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on event_quit {
+    $push = exec("/usr/bin/pushover-cs CS:User_Left $2 $+ : $1 has quit");
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on beacon_initial {
+    $push = exec("/usr/bin/pushover-cs CS:New_Beacon New Beacon Received - ID: $1 | Hostname: " . binfo($1, "computer"));
+    @pushdata = readAll($push);
+    closef($push);
+}
+
+on ssh_initial {
+	$push = exec("/usr/bin/pushover-cs CS:New_SSH New SSH Session Received - ID: $1 | Hostname " . binfo($1, "computer"));
+	@pushdata = readAll($push);
+	closef($push);
+}

